@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User Guide — Top-Down Parser Visualizer</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    .guide-container { max-width: 860px; margin: 0 auto; padding: 2rem; }
+    .guide-container h2 { color: var(--accent-blue); font-size: 1.3rem; margin: 2rem 0 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+    .guide-container h2::before { content:''; width:3px; height:1em; background:var(--accent-blue); border-radius:2px; display:inline-block; }
+    .guide-container h3 { color: var(--accent-purple); font-size: 1rem; margin: 1.25rem 0 0.5rem; }
+    .guide-container p { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.8; margin-bottom: 0.75rem; }
+    .guide-container ul, .guide-container ol { color: var(--text-secondary); font-size: 0.88rem; padding-left: 1.5rem; line-height: 1.9; }
+    .guide-container code { background: var(--bg-secondary); color: var(--accent-blue); padding: 0.1em 0.35em; border-radius: 3px; font-family: var(--font-mono); font-size: 0.85em; }
+    .guide-container .code-block { margin: 0.75rem 0; }
+    .guide-container table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.84rem; }
+    .guide-container th { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    .guide-container td { border: 1px solid var(--border); padding: 0.45rem 0.75rem; color: var(--text-secondary); }
+    .guide-container td:first-child { color: var(--accent-purple); font-family: var(--font-mono); }
+    .toc { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+    .toc h4 { color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.75rem; }
+    .toc ol { color: var(--accent-blue); }
+    .toc ol li { margin-bottom: 0.25rem; }
+    .toc ol li a { color: var(--accent-blue); text-decoration: none; font-size: 0.88rem; }
+    .toc ol li a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+    ParseViz
+  </a>
+  <div class="breadcrumb">
+    <span class="sep">/</span>
+    <a href="index.html">Top-Down</a>
+    <span class="sep">/</span>
+    <span class="current">User Guide</span>
+  </div>
+</nav>
+
+<div class="page-header">
+  <h1>User Guide</h1>
+  <p>How to enter grammars and use every control in the Top-Down Parser Visualizer.</p>
+</div>
+
+<div class="guide-container">
+
+  <div class="toc">
+    <h4>Contents</h4>
+    <ol>
+      <li><a href="#grammar">Grammar Input Format</a></li>
+      <li><a href="#rdp">Using the RDP Module</a></li>
+      <li><a href="#ll1-ff">LL(1) — First &amp; Follow</a></li>
+      <li><a href="#ll1-table">LL(1) — Parse Table</a></li>
+      <li><a href="#ll1-parse">LL(1) — String Parsing</a></li>
+      <li><a href="#examples">Example Grammars</a></li>
+      <li><a href="#limitations">Limitations &amp; Tips</a></li>
+    </ol>
+  </div>
+
+  <!-- ── 1. Grammar Format ── -->
+  <h2 id="grammar">1 · Grammar Input Format</h2>
+  <p>Write one production rule per line. Use the arrow <code>-></code> to separate the left-hand side (LHS) non-terminal from the right-hand side (RHS). Use the pipe <code>|</code> to list alternative productions on the same line.</p>
+
+  <div class="code-block">
+    <pre class="code-block">E  -> T EP
+EP -> + T EP | ε
+T  -> F TP
+TP -> * F TP | ε
+F  -> ( E ) | id</pre>
+  </div>
+
+  <h3>Symbol Conventions</h3>
+  <table>
+    <thead><tr><th>Symbol type</th><th>Rule</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Non-terminal</td><td>Starts with an uppercase letter</td><td><code>E</code>, <code>EP</code>, <code>Stmt</code></td></tr>
+      <tr><td>Terminal</td><td>Anything else (lowercase, digit, special)</td><td><code>id</code>, <code>+</code>, <code>(</code></td></tr>
+      <tr><td>Empty / ε</td><td><code>ε</code>, <code>eps</code>, or <code>epsilon</code></td><td><code>A -> ε</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>Symbols in a production are separated by whitespace. Single-character symbols can also be entered run-together in the test string (e.g., <code>aab</code> is treated as tokens <code>a a b</code>).</p>
+
+  <!-- ── 2. RDP ── -->
+  <h2 id="rdp">2 · Using the RDP Module</h2>
+
+  <h3>Loading the grammar</h3>
+  <ol>
+    <li>Navigate to the <strong>Recursive Descent Parser</strong> page from the home screen.</li>
+    <li>Type (or paste) your grammar in the <em>Grammar Input</em> text area, or choose one of the built-in examples from the drop-down.</li>
+    <li>Enter a <em>Test String</em> in the second field.</li>
+    <li>Click <strong>▶ Load &amp; Simulate</strong>. The full trace is computed instantly.</li>
+  </ol>
+
+  <h3>Step controls</h3>
+  <table>
+    <thead><tr><th>Button</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Next →</td><td>Advance one simulation step forward.</td></tr>
+      <tr><td>← Prev</td><td>Go back one step.</td></tr>
+      <tr><td>▶ Play</td><td>Auto-advance with the delay set by the slider.</td></tr>
+      <tr><td>⏸ Pause</td><td>Stop auto-play.</td></tr>
+      <tr><td>↦ End</td><td>Jump directly to the final state.</td></tr>
+      <tr><td>⟳ Reset</td><td>Clear everything and start over.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Reading the parse tree</h3>
+  <table>
+    <thead><tr><th>Colour</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td style="color:var(--accent-purple)">Purple border</td><td>Non-terminal node (not yet expanded or successfully returned)</td></tr>
+      <tr><td style="color:var(--accent-green)">Green fill</td><td>Terminal node that has been matched, or a non-terminal that returned success</td></tr>
+      <tr><td style="color:var(--accent-orange)">Orange glow</td><td>Node currently being expanded</td></tr>
+      <tr><td style="color:var(--accent-red)">Red fill</td><td>Node that failed; will be removed on backtrack</td></tr>
+      <tr><td style="color:var(--text-muted)">Dashed circle</td><td>ε (empty) production</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Input token strip</h3>
+  <p>The token strip above the parse tree shows all input tokens. The <span style="color:var(--accent-blue)">blue token</span> is the one currently being examined. <span style="color:var(--accent-green)">Green struck-through tokens</span> have been consumed. Grey tokens are yet to be read.</p>
+
+  <h3>Call stack</h3>
+  <p>The <em>Call Stack</em> panel shows the current recursion depth — the topmost entry is the non-terminal being expanded right now. Entries below it are the calling context that will resume after the current expansion returns.</p>
+
+  <!-- ── 3. LL(1) First & Follow ── -->
+  <h2 id="ll1-ff">3 · LL(1) — First &amp; Follow Computation</h2>
+
+  <ol>
+    <li>Enter the grammar on the left panel and click <strong>▶ Load Grammar</strong>.</li>
+    <li>Switch to the <strong>① First &amp; Follow</strong> tab (it may already be active).</li>
+    <li>The parsed rules are shown in the left panel for reference.</li>
+  </ol>
+
+  <h3>Step-by-step mode</h3>
+  <p>Click <strong>Next Step →</strong> to add one element to a FIRST or FOLLOW set at a time. The <em>step explanation</em> box below the controls shows exactly which rule caused the derivation and why. The affected set card pulses blue to draw attention.</p>
+
+  <h3>Compute All</h3>
+  <p>Click <strong>Compute All</strong> to fill every FIRST and FOLLOW set at once. The full derivation log appears in the trace panel below.</p>
+
+  <h3>Understanding the sets</h3>
+  <ul>
+    <li><strong>FIRST(A)</strong> = the set of terminals that can begin any string derived from A, plus ε if A can derive the empty string.</li>
+    <li><strong>FOLLOW(A)</strong> = the set of terminals (and $) that can appear immediately after A in some sentential form. $ always appears in FOLLOW(start symbol).</li>
+  </ul>
+
+  <!-- ── 4. LL(1) Parse Table ── -->
+  <h2 id="ll1-table">4 · LL(1) — Parse Table Construction</h2>
+
+  <p>Switch to the <strong>② Parse Table</strong> tab. The table is ready to be filled once First &amp; Follow sets are available (you don't need to manually complete them first; they are computed automatically when you load the grammar).</p>
+
+  <h3>Step-by-step filling</h3>
+  <p>Click <strong>Next Step →</strong> to place one production into the table. Each step highlights the filled cell and explains why that cell was chosen (from FIRST or FOLLOW). Use <strong>Fill All</strong> to fill all cells at once.</p>
+
+  <h3>Conflict detection</h3>
+  <p>If a cell would receive two different productions, a <span style="color:var(--accent-red)">red conflict banner</span> appears at the top of the table, and the conflicted cell is highlighted in red with a ⚠ marker. This means <strong>the grammar is not LL(1)</strong> — no LL(1) parser can be built for it directly. You may need to eliminate left recursion, left-factor the grammar, or use a different parsing strategy.</p>
+
+  <!-- ── 5. LL(1) String Parsing ── -->
+  <h2 id="ll1-parse">5 · LL(1) — String Parsing</h2>
+
+  <p>Switch to the <strong>③ String Parsing</strong> tab. Enter a test string in the input field and click <strong>Parse</strong>.</p>
+
+  <h3>Stack / Input / Action trace</h3>
+  <p>The classic three-column LL(1) trace is shown: <strong>Stack</strong> (top on the right), <strong>Remaining Input</strong>, and <strong>Action</strong> (which rule was applied or which terminal was matched). Each row corresponds to one move.</p>
+
+  <h3>Step controls</h3>
+  <p>Use <strong>Next Step →</strong>, <strong>← Prev</strong>, <strong>▶ Play</strong>, and <strong>↦ End</strong> as in the RDP module. The live stack and input displays above the trace update with every step.</p>
+
+  <h3>Verdict</h3>
+  <p>The final row is marked <span style="color:var(--accent-green)">ACCEPT</span> if the input was fully consumed and the stack reduced to just $, or <span style="color:var(--accent-red)">REJECT</span> with the reason (e.g., "no entry in M[NT, token]" or "stack empty but input remaining").</p>
+
+  <!-- ── 6. Examples ── -->
+  <h2 id="examples">6 · Example Grammars</h2>
+
+  <table>
+    <thead><tr><th>Name</th><th>Grammar</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Arithmetic</td>
+        <td><code>E→T EP; EP→+T EP|ε; T→F TP; TP→*F TP|ε; F→(E)|id</code></td>
+        <td>Classic LL(1)-compatible expression grammar</td>
+      </tr>
+      <tr>
+        <td>Simple</td>
+        <td><code>S→a B|b; B→b B|ε</code></td>
+        <td>Small, easy to trace by hand</td>
+      </tr>
+      <tr>
+        <td>Palindrome-like</td>
+        <td><code>S→a S b|ε</code></td>
+        <td>Matches aⁿbⁿ</td>
+      </tr>
+      <tr>
+        <td>Conflicted</td>
+        <td><code>S→a|a b</code></td>
+        <td>NOT LL(1) — demonstrates conflict detection</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── 7. Limitations ── -->
+  <h2 id="limitations">7 · Limitations &amp; Tips</h2>
+
+  <ul>
+    <li><strong>Left recursion:</strong> The RDP simulator will loop infinitely on left-recursive grammars (e.g., <code>E → E + T</code>). Remove left recursion before using it.</li>
+    <li><strong>LL(1) restrictions:</strong> The LL(1) module will detect conflicts but cannot automatically fix them. You must left-factor or eliminate left recursion manually.</li>
+    <li><strong>Token separation:</strong> For multi-character terminals like <code>id</code>, use spaces in the test string: <code>id + id * id</code>. For single-character grammars, you can write them run-together: <code>aabb</code>.</li>
+    <li><strong>Performance:</strong> All computation is done in the browser with no server calls. Very large grammars (dozens of rules) may take a moment but will still work.</li>
+    <li><strong>Cycle detection:</strong> The FIRST/FOLLOW algorithm uses a fixed-point iteration that terminates for any grammar, including cyclic ones.</li>
+    <li><strong>Browser:</strong> Works in any modern browser (Chrome, Firefox, Edge, Safari). No installation required.</li>
+  </ul>
+
+</div>
+
+</body>
+</html>

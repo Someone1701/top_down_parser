@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RDP — Recursive Descent Parser</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    /* ── RDP-specific styles ── */
+    .rdp-layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 1000px) { .rdp-layout { grid-template-columns: 1fr; } }
+
+    .right-panel { display: flex; flex-direction: column; gap: 1.25rem; }
+
+    #tree-canvas {
+      width: 100%;
+      min-height: 420px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Call stack display */
+    .call-stack-display {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 0.5rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .call-frame {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      border-left: 3px solid transparent;
+      animation: slideIn 0.2s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    .call-frame.top   { border-left-color: var(--accent-blue); background: rgba(88,166,255,0.07); color: var(--accent-blue); }
+    .call-frame.other { border-left-color: var(--border); color: var(--text-secondary); }
+    .call-frame.back  { border-left-color: var(--accent-orange); background: rgba(210,153,34,0.06); color: var(--accent-orange); }
+
+    .call-frame .depth-indicator {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      min-width: 1.5rem;
+      text-align: right;
+    }
+
+    /* Input token display */
+    .input-strip {
+      display: flex; align-items: center; gap: 0.4rem;
+      padding: 0.6rem 0.8rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      flex-wrap: wrap;
+    }
+
+    .input-tok {
+      padding: 0.25rem 0.55rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .input-tok.consumed {
+      background: rgba(63,185,80,0.08);
+      border-color: rgba(63,185,80,0.3);
+      color: var(--accent-green);
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+
+    .input-tok.current {
+      background: rgba(88,166,255,0.15);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      font-weight: 700;
+      box-shadow: 0 0 0 2px rgba(88,166,255,0.2);
+    }
+
+    .input-tok.future { color: var(--text-muted); }
+
+    /* Speed control */
+    .speed-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.8rem; color: var(--text-secondary);
+    }
+    .speed-row input[type=range] { flex: 1; accent-color: var(--accent-blue); }
+
+    /* Legend */
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
+      font-size: 0.75rem; color: var(--text-secondary);
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+    ParseViz
+  </a>
+  <div class="breadcrumb">
+    <span class="sep">/</span>
+    <a href="index.html">Top-Down</a>
+    <span class="sep">/</span>
+    <span class="current">Recursive Descent Parser</span>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;">
+    <a href="ll1.html" class="btn btn-secondary btn-sm">LL(1) →</a>
+    <a href="guide.html" class="btn btn-secondary btn-sm">📖 Guide</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <h1>Recursive Descent Parser</h1>
+  <p>Enter a context-free grammar and a test string. Watch the parser descend into non-terminals, match terminals, and backtrack when needed.</p>
+</div>
+
+<div class="container">
+  <div class="rdp-layout">
+
+    <!-- ── LEFT PANEL: input controls ── -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>Grammar Input</div>
+
+        <div class="form-group">
+          <label>Grammar <span style="color:var(--text-muted);font-weight:400">(one rule per line, use | for alternatives)</span></label>
+          <textarea id="grammar-input" spellcheck="false" placeholder="S -> A B&#10;A -> a | ε&#10;B -> b B | ε"></textarea>
+          <div class="grammar-hint">Symbols: uppercase = non-terminal · lowercase/other = terminal · ε = empty</div>
+        </div>
+
+        <div class="form-group">
+          <label>Test String <span style="color:var(--text-muted);font-weight:400">(space-separated or run-together)</span></label>
+          <input type="text" id="input-string" placeholder="a b"/>
+        </div>
+
+        <div class="form-group">
+          <label>Load example</label>
+          <select id="example-select">
+            <option value="">— choose an example —</option>
+            <option value="ex1">Arithmetic: E → T E' | …</option>
+            <option value="ex2">Simple: S → a S b | ε</option>
+            <option value="ex3">Backtracks: S → a b | a</option>
+            <option value="ex4">Nested: E → E + T | T; T → id</option>
+          </select>
+        </div>
+
+        <div id="grammar-error" style="display:none;" class="trace-line fail" style="margin-top:0.5rem;"></div>
+
+        <div class="btn-group">
+          <button class="btn btn-primary" id="btn-load" onclick="loadGrammar()">▶ Load &amp; Simulate</button>
+          <button class="btn btn-secondary" id="btn-reset" onclick="resetSim()" disabled>⟳ Reset</button>
+        </div>
+      </div>
+
+      <!-- Step controls -->
+      <div class="card" id="step-controls" style="display:none;">
+        <div class="card-title"><span class="dot"></span>Step Controls</div>
+
+        <div class="status-bar" id="status-bar">
+          <div class="status-indicator idle" id="status-dot"></div>
+          <div class="status-text" id="status-text">Ready</div>
+          <div class="step-counter" id="step-counter">0 / 0</div>
+        </div>
+
+        <div class="speed-row">
+          <span>Delay</span>
+          <input type="range" id="speed-slider" min="0" max="2000" value="600" step="100"/>
+          <span id="speed-label">600 ms</span>
+        </div>
+
+        <div class="btn-group" style="margin-top:0.75rem;">
+          <button class="btn btn-secondary btn-sm" id="btn-prev" onclick="stepBack()" disabled>← Prev</button>
+          <button class="btn btn-primary btn-sm" id="btn-next" onclick="stepForward()">Next →</button>
+          <button class="btn btn-success btn-sm" id="btn-play" onclick="togglePlay()">▶ Play</button>
+          <button class="btn btn-secondary btn-sm" id="btn-end" onclick="jumpEnd()">↦ End</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="card" id="legend-card" style="display:none;">
+        <div class="card-title"><span class="dot"></span>Legend</div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="border-color:var(--accent-purple)"></div> Non-terminal</div>
+          <div class="legend-item"><div class="legend-dot" style="border-color:var(--accent-green);background:rgba(63,185,80,0.1)"></div> Matched terminal</div>
+          <div class="legend-item"><div class="legend-dot" style="border-color:var(--accent-orange);"></div> Active / expanding</div>
+          <div class="legend-item"><div class="legend-dot" style="border-color:var(--accent-red);background:rgba(248,81,73,0.1)"></div> Failed / backtrack</div>
+          <div class="legend-item"><div class="legend-dot" style="border-color:var(--text-muted);"></div> ε (empty)</div>
+        </div>
+      </div>
+
+      <!-- Help -->
+      <details class="help-section">
+        <summary>How to use the RDP module</summary>
+        <div class="help-body" style="padding-top:0.75rem;">
+          <p><strong>1.</strong> Enter your grammar. Each line is one non-terminal's rules: <code>NT -> alt1 | alt2</code>.</p>
+          <p><strong>2.</strong> Enter a test string. Tokens are separated by spaces, or written run-together for single-char grammars (e.g. <code>ab</code> = <code>a b</code>).</p>
+          <p><strong>3.</strong> Click <code>Load &amp; Simulate</code>. The full trace is computed.</p>
+          <p><strong>4.</strong> Use <code>Next</code> / <code>Prev</code> to step through, or <code>Play</code> for auto-playback. Adjust the delay slider.</p>
+          <p><strong>Parse tree colours:</strong> purple = non-terminal, green = matched terminal, orange = currently being expanded, red = backtracked/failed, dashed = ε.</p>
+          <p><strong>Note:</strong> RDP tries alternatives left-to-right. Grammars with left-recursion will cause infinite loops — remove left recursion first.</p>
+        </div>
+      </details>
+    </div>
+
+    <!-- ── RIGHT PANEL ── -->
+    <div class="right-panel">
+
+      <!-- Input token strip -->
+      <div class="card" id="input-display-card" style="display:none;">
+        <div class="card-title"><span class="dot"></span>Input Tokens</div>
+        <div class="input-strip" id="input-strip"></div>
+      </div>
+
+      <!-- Call stack -->
+      <div class="card" id="callstack-card" style="display:none;">
+        <div class="card-title"><span class="dot"></span>Call Stack (top = current)</div>
+        <div class="call-stack-display" id="call-stack"></div>
+      </div>
+
+      <!-- Parse tree -->
+      <div class="card">
+        <div class="card-title">
+          <span class="dot"></span>Parse Tree
+          <span style="flex:1"></span>
+          <button class="btn btn-secondary btn-sm" onclick="fitTree()" style="font-size:0.7rem;padding:0.2rem 0.6rem;">⊞ Fit</button>
+        </div>
+        <div id="tree-canvas">
+          <svg id="tree-svg" xmlns="http://www.w3.org/2000/svg">
+            <g id="tree-g"></g>
+          </svg>
+          <div id="tree-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.88rem;pointer-events:none;">
+            Parse tree appears here after loading
+          </div>
+        </div>
+      </div>
+
+      <!-- Trace log -->
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>Step Trace Log</div>
+        <div class="trace-panel" id="trace-log">
+          <div class="trace-line info">Load a grammar to begin...</div>
+        </div>
+      </div>
+
+      <!-- Verdict -->
+      <div id="verdict-area"></div>
+
+    </div><!-- end right-panel -->
+  </div><!-- end rdp-layout -->
+</div><!-- end container -->
+
+<script src="js/grammar.js"></script>
+<script src="js/rdp-ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LL(1) Parser</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    /* ── LL(1)-page extras ── */
+    .ll-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 1000px) { .ll-layout { grid-template-columns: 1fr; } }
+
+    /* sub-tabs within each section */
+    .section-tabs {
+      display: flex; gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.25rem;
+    }
+    .stab {
+      padding: 0.5rem 1rem;
+      background: transparent; border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 0.82rem; font-weight: 500;
+      cursor: pointer; font-family: var(--font-sans);
+      transition: all 0.2s;
+    }
+    .stab.active { color: var(--accent-purple); border-bottom-color: var(--accent-purple); }
+
+    /* Conflict message */
+    .conflict-msg {
+      background: rgba(248,81,73,0.1);
+      border: 1px solid rgba(248,81,73,0.35);
+      border-radius: var(--radius-sm);
+      padding: 0.7rem 1rem;
+      color: var(--accent-red);
+      font-size: 0.83rem;
+      margin-top: 0.75rem;
+    }
+
+    /* Step explanation box */
+    .step-explain {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-purple);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 1rem;
+      font-size: 0.83rem;
+      color: var(--text-secondary);
+      min-height: 2.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .step-explain strong { color: var(--accent-purple); }
+    .step-explain code { background: rgba(188,140,255,0.1); color: var(--accent-purple); padding: 0 0.3em; border-radius: 2px; font-family: var(--font-mono); }
+
+    /* LL trace wrapper */
+    .ll-trace-wrapper { overflow-x: auto; }
+
+    /* Section label pill */
+    .section-pill {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: rgba(188,140,255,0.1);
+      border: 1px solid rgba(188,140,255,0.25);
+      border-radius: 20px;
+      padding: 0.2rem 0.75rem;
+      font-size: 0.75rem; font-weight: 600;
+      color: var(--accent-purple);
+      margin-bottom: 1rem;
+    }
+
+    /* highlight pulse animation for table cells */
+    @keyframes cellPop {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    .cell-pop { animation: cellPop 0.35s ease; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+    ParseViz
+  </a>
+  <div class="breadcrumb">
+    <span class="sep">/</span>
+    <a href="index.html">Top-Down</a>
+    <span class="sep">/</span>
+    <span class="current">LL(1) Parser</span>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;">
+    <a href="rdp.html" class="btn btn-secondary btn-sm">RDP →</a>
+    <a href="guide.html" class="btn btn-secondary btn-sm">📖 Guide</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <h1>LL(1) Parser</h1>
+  <p>Compute First &amp; Follow sets, build the LL(1) parse table, and simulate stack-based parsing — all step by step.</p>
+</div>
+
+<div class="container">
+  <div class="ll-layout">
+
+    <!-- ── LEFT PANEL ── -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--accent-purple)"></span>Grammar Input</div>
+
+        <div class="form-group">
+          <label>Grammar</label>
+          <textarea id="grammar-input" spellcheck="false" placeholder="E -> T EP&#10;EP -> + T EP | ε&#10;T -> F TP&#10;TP -> * F TP | ε&#10;F -> ( E ) | id"></textarea>
+          <div class="grammar-hint">NT = uppercase · terminal = lowercase/symbol · ε = epsilon</div>
+        </div>
+
+        <div class="form-group">
+          <label>Load example</label>
+          <select id="example-select">
+            <option value="">— choose —</option>
+            <option value="expr">Expression grammar (E → T E'…)</option>
+            <option value="simple">Simple: S → a B | b; B → b B | ε</option>
+            <option value="conflict">Conflicted (not LL(1)): S → a | a b</option>
+            <option value="ab">S → a S b | ε</option>
+          </select>
+        </div>
+
+        <div id="grammar-error" style="display:none;" class="trace-line fail"></div>
+
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="loadLL1Grammar()">▶ Load Grammar</button>
+          <button class="btn btn-secondary" id="btn-reset" onclick="resetAll()" disabled>⟳ Reset</button>
+        </div>
+      </div>
+
+      <!-- Grammar rules display -->
+      <div class="card" id="rules-card" style="display:none;">
+        <div class="card-title"><span class="dot" style="background:var(--accent-purple)"></span>Parsed Rules</div>
+        <div id="rules-list" style="font-family:var(--font-mono);font-size:0.82rem;display:flex;flex-direction:column;gap:0.3rem;"></div>
+      </div>
+
+      <!-- Help -->
+      <details class="help-section">
+        <summary>How to use the LL(1) module</summary>
+        <div class="help-body" style="padding-top:0.75rem;">
+          <p><strong>1.</strong> Enter your grammar and click <strong>Load Grammar</strong>.</p>
+          <p><strong>2.</strong> In the <em>First &amp; Follow</em> tab, click <strong>Next Step</strong> to add one derivation at a time, or <strong>Compute All</strong> to compute everything at once.</p>
+          <p><strong>3.</strong> In the <em>Parse Table</em> tab, click <strong>Next Step</strong> to fill one cell at a time. Conflicted cells are highlighted in red.</p>
+          <p><strong>4.</strong> In the <em>String Parsing</em> tab, enter a test string and click <strong>Next Step</strong> to execute one stack move at a time until ACCEPT or REJECT.</p>
+          <p><strong>Note:</strong> The grammar must be free of left recursion and not ambiguous for LL(1). Conflicts are detected and flagged automatically.</p>
+          <p><strong>Grammar format:</strong> <code>S -> A B | ε</code> — one rule per line, <code>|</code> separates alternatives.</p>
+        </div>
+      </details>
+    </div><!-- end left panel -->
+
+    <!-- ── RIGHT PANEL (tabs) ── -->
+    <div>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('ff')"   id="tab-ff">① First &amp; Follow</button>
+        <button class="tab-btn"        onclick="switchTab('table')" id="tab-table">② Parse Table</button>
+        <button class="tab-btn"        onclick="switchTab('parse')" id="tab-parse">③ String Parsing</button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           TAB 1: First & Follow
+      ═══════════════════════════════════════════════════════ -->
+      <div class="tab-content active" id="tc-ff">
+        <div class="section-pill">① First &amp; Follow Set Computation</div>
+
+        <div id="ff-placeholder" class="trace-line info" style="padding:1rem;border-radius:var(--radius-sm);background:var(--bg-card);border:1px solid var(--border);">
+          Load a grammar to begin First &amp; Follow computation.
+        </div>
+
+        <div id="ff-controls" style="display:none;">
+          <div class="status-bar" id="ff-status">
+            <div class="status-indicator idle" id="ff-dot"></div>
+            <div class="status-text" id="ff-text">Ready</div>
+            <div class="step-counter" id="ff-counter">0 / 0</div>
+          </div>
+
+          <div class="step-explain" id="ff-explain">Click <strong>Next Step</strong> to begin.</div>
+
+          <div class="btn-group" style="margin-bottom:1.25rem;">
+            <button class="btn btn-secondary btn-sm" id="ff-prev" onclick="ffPrev()" disabled>← Prev</button>
+            <button class="btn btn-primary btn-sm"   id="ff-next" onclick="ffNext()">Next Step →</button>
+            <button class="btn btn-success btn-sm"   id="ff-all"  onclick="ffAll()">Compute All</button>
+          </div>
+
+          <div class="section-heading">FIRST Sets</div>
+          <div class="sets-grid" id="first-grid"></div>
+
+          <hr class="divider"/>
+
+          <div class="section-heading">FOLLOW Sets</div>
+          <div class="sets-grid" id="follow-grid"></div>
+
+          <hr class="divider"/>
+
+          <div class="section-heading">Step Log</div>
+          <div class="trace-panel" id="ff-trace"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           TAB 2: Parse Table
+      ═══════════════════════════════════════════════════════ -->
+      <div class="tab-content" id="tc-table">
+        <div class="section-pill">② LL(1) Parse Table Construction</div>
+
+        <div id="table-placeholder" class="trace-line info" style="padding:1rem;border-radius:var(--radius-sm);background:var(--bg-card);border:1px solid var(--border);">
+          Complete First &amp; Follow computation first, then switch here.
+        </div>
+
+        <div id="table-controls" style="display:none;">
+          <div class="status-bar" id="tbl-status">
+            <div class="status-indicator idle" id="tbl-dot"></div>
+            <div class="status-text" id="tbl-text">Ready</div>
+            <div class="step-counter" id="tbl-counter">0 / 0</div>
+          </div>
+
+          <div class="step-explain" id="tbl-explain">Click <strong>Next Step</strong> to place a rule into the table.</div>
+
+          <div class="btn-group" style="margin-bottom:1.25rem;">
+            <button class="btn btn-secondary btn-sm" id="tbl-prev" onclick="tblPrev()" disabled>← Prev</button>
+            <button class="btn btn-primary btn-sm"   id="tbl-next" onclick="tblNext()">Next Step →</button>
+            <button class="btn btn-success btn-sm"   id="tbl-all"  onclick="tblAll()">Fill All</button>
+          </div>
+
+          <div id="conflict-list"></div>
+
+          <div class="ll-table-wrapper" style="margin-top:0.75rem;">
+            <table class="ll-table" id="parse-table-el"></table>
+          </div>
+
+          <hr class="divider"/>
+          <div class="section-heading">Table Step Log</div>
+          <div class="trace-panel" id="tbl-trace"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           TAB 3: String Parsing
+      ═══════════════════════════════════════════════════════ -->
+      <div class="tab-content" id="tc-parse">
+        <div class="section-pill">③ Stack-Based String Parsing</div>
+
+        <div id="parse-placeholder" class="trace-line info" style="padding:1rem;border-radius:var(--radius-sm);background:var(--bg-card);border:1px solid var(--border);">
+          Complete the parse table first, then enter a test string here.
+        </div>
+
+        <div id="parse-controls" style="display:none;">
+          <div class="form-group" style="margin-bottom:0.75rem;">
+            <label>Test String</label>
+            <div style="display:flex;gap:0.5rem;">
+              <input type="text" id="parse-input" placeholder="id + id * id" style="flex:1;"/>
+              <button class="btn btn-primary" onclick="startParsing()">Parse</button>
+            </div>
+          </div>
+
+          <div class="status-bar" id="parse-status">
+            <div class="status-indicator idle" id="parse-dot"></div>
+            <div class="status-text" id="parse-text">Enter a string and click Parse.</div>
+            <div class="step-counter" id="parse-counter">0 / 0</div>
+          </div>
+
+          <div class="parser-state" id="stack-input-display" style="display:none;">
+            <div class="stack-display">
+              <div class="label">Stack (top →)</div>
+              <div class="stack-tokens" id="stack-tokens"></div>
+            </div>
+            <div class="input-display">
+              <div class="label">Remaining Input</div>
+              <div class="input-tokens" id="input-tokens"></div>
+            </div>
+          </div>
+
+          <div class="step-explain" id="parse-explain" style="display:none;"></div>
+
+          <div class="btn-group" style="margin-bottom:1.25rem;">
+            <button class="btn btn-secondary btn-sm" id="parse-prev" onclick="parsePrev()" disabled>← Prev</button>
+            <button class="btn btn-primary btn-sm"   id="parse-next" onclick="parseNext()" disabled>Next Step →</button>
+            <button class="btn btn-success btn-sm"   id="parse-play" onclick="parsePlay()" disabled>▶ Play</button>
+            <button class="btn btn-secondary btn-sm" id="parse-end"  onclick="parseEnd()"  disabled>↦ End</button>
+          </div>
+
+          <div id="parse-verdict"></div>
+
+          <!-- Three-column LL trace -->
+          <div class="section-heading" style="margin-top:0.75rem;">Parsing Trace</div>
+          <div class="ll-trace-wrapper">
+            <table class="ll-trace-table" id="ll-trace-table">
+              <thead>
+                <tr>
+                  <th style="width:5%">#</th>
+                  <th style="width:35%">Stack</th>
+                  <th style="width:30%">Input</th>
+                  <th style="width:30%">Action</th>
+                </tr>
+              </thead>
+              <tbody id="ll-trace-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end right panel -->
+  </div><!-- end ll-layout -->
+</div><!-- end container -->
+
+<script src="js/grammar.js"></script>
+<script src="js/ll1-ui.js"></script>
+</body>
+</html>
